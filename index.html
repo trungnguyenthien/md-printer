@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown Printer</title>
+    <!-- Showdown.js for markdown rendering -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/showdown/2.1.0/showdown.min.js"></script>
+    <!-- Highlight.js for code highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+    <!-- GitHub Markdown CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <!-- html2pdf.js for PDF export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Arial, 'Liberation Sans', 'Helvetica Neue', sans-serif;
+            background: #fff;
+        }
+        #content {
+            max-width: 800px;
+            margin: 0 auto;
+            /* GitHub markdown container */
+            box-sizing: border-box;
+        }
+        #content.markdown-body {
+            padding: 32px;
+        }
+        #content img {
+            display: block;
+            max-width: 80%;
+            height: auto;
+            margin: 24px auto;
+        }
+        .floating-button {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: background-color 0.3s;
+        }
+        .floating-button:hover {
+            background-color: #0056b3;
+        }
+        .floating-button svg {
+            width: 24px;
+            height: 24px;
+        }
+        @media print {
+            .floating-button {
+                display: none;
+            }
+            body {
+                padding: 0;
+            }
+            #content {
+                max-width: none;
+            }
+            /* Đặt khổ giấy A4 ngang, lề 10mm */
+            @page {
+                size: A4 portrait;
+                margin: 10mm;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="content" class="markdown-body"></div>
+    <button class="floating-button" id="print-btn" onclick="window.print()" title="Print Page" style="bottom: 90px;">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 6 2 18 2 18 9" />
+            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+            <rect x="6" y="14" width="12" height="8" />
+        </svg>
+    </button>
+    <button class="floating-button" onclick="pasteAndRenderMarkdown()" title="Paste and Print Markdown">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+            <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+        </svg>
+    </button>
+    <button class="floating-button" id="pdf-btn" onclick="saveAsPDF()" title="Lưu PDF" style="bottom: 160px;">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 19V5M5 12l7-7 7 7" />
+            <rect x="5" y="19" width="14" height="2" rx="1" />
+        </svg>
+    </button>
+
+    <script>
+        const converter = new showdown.Converter({
+            tables: true,
+            tasklists: true,
+            strikethrough: true
+        });
+
+        async function pasteAndRenderMarkdown() {
+            try {
+                const text = await navigator.clipboard.readText();
+                const html = converter.makeHtml(text);
+                document.getElementById('content').innerHTML = html;
+                
+                // Apply syntax highlighting to code blocks
+                document.querySelectorAll('pre code').forEach((block) => {
+                    hljs.highlightElement(block);
+                });
+            } catch (err) {
+                console.error('Failed to read clipboard:', err);
+                alert('Failed to read clipboard content. Please make sure you have markdown content in your clipboard.');
+            }
+        }
+
+        function getTitleForPDF() {
+            // Lấy title đầu tiên trong nội dung markdown (h1)
+            const content = document.getElementById('content');
+            let title = 'markdown';
+            const h1 = content.querySelector('h1');
+            if (h1 && h1.textContent) {
+                title = h1.textContent;
+            }
+            // Loại bỏ ký tự không hợp lệ cho tên file
+            return title.replace(/[^a-zA-Z0-9-_\.]/g, '_');
+        }
+
+        async function saveAsPDF() {
+            const element = document.getElementById('content');
+            // Đợi tất cả ảnh trong element load xong
+            const images = element.querySelectorAll('img');
+            const promises = Array.from(images).map(img => {
+                if (img.complete && img.naturalHeight !== 0) return Promise.resolve();
+                return new Promise(resolve => {
+                    img.onload = img.onerror = resolve;
+                });
+            });
+            await Promise.all(promises);
+            const opt = {
+                margin:       { top: 15, right: 10, bottom: 15, left: 15 },
+                filename:     getTitleForPDF() + '.pdf',
+                image:        { type: 'jpeg', quality: 0.98 },
+                html2canvas:  { scale: 2, useCORS: true },
+                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+            html2pdf().set(opt).from(element).save();
+        }
+    </script>
+</body>
+</html>
