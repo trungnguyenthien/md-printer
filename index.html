@@ -18,7 +18,7 @@
             margin: 0;
             padding: 20px;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Arial, 'Liberation Sans', 'Helvetica Neue', sans-serif;
-            background: #fff;
+            background: #fffbf0; /* Màu vàng nhạt */
         }
         #content {
             max-width: 800px;
@@ -75,10 +75,63 @@
                 margin: 10mm;
             }
         }
+        
+        /* Loading indicator styles */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        
+        .loading-popup {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            text-align: center;
+            max-width: 300px;
+        }
+        
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .loading-text {
+            color: #333;
+            font-size: 16px;
+            margin: 0;
+        }
     </style>
 </head>
 <body>
     <div id="content" class="markdown-body"></div>
+    
+    <!-- Loading indicator -->
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="loading-popup">
+            <div class="loading-spinner"></div>
+            <p class="loading-text" id="loading-text">Đang tạo PDF...</p>
+        </div>
+    </div>
+    
     <button class="floating-button" id="print-btn" onclick="window.print()" title="Print Page" style="bottom: 90px;">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="6 9 6 2 18 2 18 9" />
@@ -93,10 +146,7 @@
         </svg>
     </button>
     <button class="floating-button" id="pdf-btn" onclick="saveAsPDF()" title="Lưu PDF" style="bottom: 160px;">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 19V5M5 12l7-7 7 7" />
-            <rect x="5" y="19" width="14" height="2" rx="1" />
-        </svg>
+        PDF
     </button>
 
     <script>
@@ -105,6 +155,78 @@
             tasklists: true,
             strikethrough: true
         });
+
+        // Helper functions for loading indicator
+        function showLoading(message = 'Đang xử lý...') {
+            const loadingOverlay = document.getElementById('loading-overlay');
+            const loadingText = document.getElementById('loading-text');
+            loadingOverlay.style.display = 'flex';
+            loadingText.textContent = message;
+        }
+
+        function hideLoading() {
+            const loadingOverlay = document.getElementById('loading-overlay');
+            loadingOverlay.style.display = 'none';
+        }
+
+        function updateLoadingMessage(message) {
+            const loadingText = document.getElementById('loading-text');
+            loadingText.textContent = message;
+        }
+
+        // Helper function to check if image is fully loaded
+        function isImageLoaded(img) {
+            return img.complete && 
+                   img.naturalWidth > 0 && 
+                   img.naturalHeight > 0 && 
+                   img.src && 
+                   img.src !== '';
+        }
+
+        // Helper function to wait for all images to load
+        async function waitForImages(container) {
+            const images = container.querySelectorAll('img');
+            if (images.length === 0) return;
+            
+            const imagePromises = Array.from(images).map((img, index) => {
+                return new Promise((resolve) => {
+                    // Nếu ảnh đã load xong
+                    if (isImageLoaded(img)) {
+                        console.log(`Image ${index + 1} already loaded: ${img.src}`);
+                        resolve();
+                        return;
+                    }
+                    
+                    // Đợi ảnh load
+                    const onLoad = () => {
+                        console.log(`Image ${index + 1} loaded: ${img.src}`);
+                        img.removeEventListener('load', onLoad);
+                        img.removeEventListener('error', onError);
+                        resolve();
+                    };
+                    
+                    const onError = (error) => {
+                        console.error(`Image ${index + 1} failed to load: ${img.src}`, error);
+                        img.removeEventListener('load', onLoad);
+                        img.removeEventListener('error', onError);
+                        resolve(); // Vẫn resolve để không block
+                    };
+                    
+                    img.addEventListener('load', onLoad);
+                    img.addEventListener('error', onError);
+                    
+                    // Timeout sau 10 giây
+                    setTimeout(() => {
+                        console.warn(`Image ${index + 1} loading timeout: ${img.src}`);
+                        img.removeEventListener('load', onLoad);
+                        img.removeEventListener('error', onError);
+                        resolve();
+                    }, 10000);
+                });
+            });
+            
+            await Promise.all(imagePromises);
+        }
 
         async function pasteAndRenderMarkdown() {
             try {
@@ -136,8 +258,12 @@
 
         async function saveAsPDF() {
             try {
+                // Hiển thị loading indicator
+                showLoading('Đang tạo PDF...');
+                
                 // Kiểm tra xem html2pdf.js có sẵn không
                 if (typeof window.html2pdf === 'undefined') {
+                    hideLoading();
                     alert('PDF libraries not loaded. Please refresh the page and try again.');
                     return;
                 }
@@ -146,35 +272,59 @@
                 
                 // Kiểm tra xem có nội dung để export không
                 if (!element.innerHTML.trim()) {
+                    hideLoading();
                     alert('No content to export. Please paste some markdown content first.');
                     return;
                 }
 
                 // Đợi tất cả ảnh trong element load xong
-                const images = element.querySelectorAll('img');
-                const promises = Array.from(images).map(img => {
-                    if (img.complete && img.naturalHeight !== 0) return Promise.resolve();
-                    return new Promise(resolve => {
-                        img.onload = img.onerror = resolve;
-                    });
-                });
-                
-                if (promises.length > 0) {
-                    await Promise.all(promises);
-                }
+                updateLoadingMessage('Đang xử lý ảnh...');
+                await waitForImages(element);
+                console.log('All images processed');
+
+                // Thêm delay nhỏ để đảm bảo DOM đã được cập nhật
+                await new Promise(resolve => setTimeout(resolve, 500));
 
                 // Tạo PDF
+                updateLoadingMessage('Đang tạo file PDF...');
                 const filename = getTitleForPDF() + '.pdf';
                 await html2pdf(element, {
                     margin: [10, 10, 10, 10],
                     filename: filename,
                     image: { type: 'jpeg', quality: 0.98 },
-                    html2canvas: { scale: 2 },
+                    html2canvas: { 
+                        scale: 2,
+                        useCORS: true,
+                        allowTaint: true,
+                        backgroundColor: '#ffffff',
+                        logging: true,
+                        imageTimeout: 15000, // Tăng timeout cho ảnh
+                        removeContainer: true,
+                        foreignObjectRendering: false, // Tắt để tránh lỗi với ảnh
+                        onclone: function(clonedDoc) {
+                            // Đảm bảo ảnh trong cloned document cũng được load
+                            const clonedImages = clonedDoc.querySelectorAll('img');
+                            clonedImages.forEach(img => {
+                                if (img.src && !img.complete) {
+                                    img.style.display = 'none';
+                                }
+                            });
+                        }
+                    },
                     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
                 });
                 
+                updateLoadingMessage('Hoàn thành!');
+                setTimeout(() => {
+                    hideLoading();
+                }, 1000);
+                
             } catch (error) {
                 console.error('Error generating PDF:', error);
+                updateLoadingMessage('Lỗi khi tạo PDF!');
+                setTimeout(() => {
+                    hideLoading();
+                }, 2000);
                 alert('Failed to generate PDF. Please try again or check the console for details.');
             }
         }
