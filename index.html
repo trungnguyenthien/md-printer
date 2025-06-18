@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.2.0/github-markdown.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <!-- html2pdf.js for PDF export -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://unpkg.com/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
     <style>
         body {
             margin: 0;
@@ -135,24 +135,48 @@
         }
 
         async function saveAsPDF() {
-            const element = document.getElementById('content');
-            // Đợi tất cả ảnh trong element load xong
-            const images = element.querySelectorAll('img');
-            const promises = Array.from(images).map(img => {
-                if (img.complete && img.naturalHeight !== 0) return Promise.resolve();
-                return new Promise(resolve => {
-                    img.onload = img.onerror = resolve;
+            try {
+                // Kiểm tra xem html2pdf.js có sẵn không
+                if (typeof window.html2pdf === 'undefined') {
+                    alert('PDF libraries not loaded. Please refresh the page and try again.');
+                    return;
+                }
+
+                const element = document.getElementById('content');
+                
+                // Kiểm tra xem có nội dung để export không
+                if (!element.innerHTML.trim()) {
+                    alert('No content to export. Please paste some markdown content first.');
+                    return;
+                }
+
+                // Đợi tất cả ảnh trong element load xong
+                const images = element.querySelectorAll('img');
+                const promises = Array.from(images).map(img => {
+                    if (img.complete && img.naturalHeight !== 0) return Promise.resolve();
+                    return new Promise(resolve => {
+                        img.onload = img.onerror = resolve;
+                    });
                 });
-            });
-            await Promise.all(promises);
-            const opt = {
-                margin:       { top: 15, right: 10, bottom: 15, left: 15 },
-                filename:     getTitleForPDF() + '.pdf',
-                image:        { type: 'jpeg', quality: 0.98 },
-                html2canvas:  { scale: 2, useCORS: true },
-                jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
-            };
-            html2pdf().set(opt).from(element).save();
+                
+                if (promises.length > 0) {
+                    await Promise.all(promises);
+                }
+
+                // Tạo PDF
+                const filename = getTitleForPDF() + '.pdf';
+                await html2pdf(element, {
+                    margin: [10, 10, 10, 10],
+                    filename: filename,
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: { scale: 2 },
+                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                });
+                
+            } catch (error) {
+                console.error('Error generating PDF:', error);
+                alert('Failed to generate PDF. Please try again or check the console for details.');
+            }
         }
     </script>
 </body>
